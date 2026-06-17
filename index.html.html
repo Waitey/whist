@@ -778,6 +778,12 @@ async function createRoom(autoJoinTony=false) {
 }
 
 async function joinRoom() {
+  // Apply Tony's layout immediately when joining
+  document.body.classList.add('tony-pov');
+  document.getElementById('tony-won-tricks').style.top = 'auto';
+  document.getElementById('tony-won-tricks').style.bottom = '12px';
+  document.getElementById('chris-won-tricks').style.bottom = 'auto';
+  document.getElementById('chris-won-tricks').style.top = '12px';
   roomCode = FIXED_ROOM;
 
   let { data, error } = await sb.from('game_state').select('*').eq('room_code', roomCode).single();
