@@ -175,23 +175,35 @@
     content: ' ⬤'; font-size: 8px;
     color: var(--gold-light); vertical-align: middle;
   }
+
+
   #tony-area {
+    position: fixed; top: 0; left: 0; right: 0;
     height: 33.333vh;
     display: flex; flex-direction: column;
     align-items: center;
     justify-content: flex-end;
     padding: 8px 16px 0 16px;
     overflow: visible;
-    flex-shrink: 0;
   }
   #chris-area {
+    position: fixed; bottom: 0; left: 0; right: 0;
     height: 33.333vh;
     display: flex; flex-direction: column;
     align-items: center;
     justify-content: flex-start;
     padding: 0 16px 8px 16px;
     overflow: visible;
-    flex-shrink: 0;
+  }
+  body.tony-pov #tony-area {
+    top: auto; bottom: 0;
+    justify-content: flex-start;
+    padding: 0 16px 8px 16px;
+  }
+  body.tony-pov #chris-area {
+    bottom: auto; top: 0;
+    justify-content: flex-end;
+    padding: 8px 16px 0 16px;
   }
   .hand-wrap {
     display: flex;
@@ -251,7 +263,13 @@
   .black { color: var(--text-dark); }
   .card.playable { cursor: pointer; }
   .card.playable:hover { filter: brightness(1.05); }
-
+  .card.playable.selected {
+    filter: brightness(1.15);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.7);
+    z-index: 100 !important;
+    outline: 2px solid var(--gold);
+    outline-offset: 1px;
+  }
   @keyframes cardShake {
     0%,100% { transform: translateX(0) rotate(var(--tilt,0deg)); }
     20% { transform: translateX(-6px) rotate(var(--tilt,0deg)); }
@@ -547,6 +565,7 @@
 <div id="lobby">
   <div class="lobby-box">
     <h1>ESTIMATION WHIST</h1>
+    <div class="subtitle">Chris vs Tony</div>
 
     <div style="margin-bottom:20px;">
       <div style="font-size:13px;color:rgba(245,240,232,0.5);margin-bottom:10px;letter-spacing:1px;">I AM</div>
@@ -555,7 +574,7 @@
         <button class="player-pick-btn" id="btn-tony" onclick="selectPlayer('tony')">Tony</button>
       </div>
       <div style="margin-top:14px;">
-
+        <button class="player-pick-btn" style="width:100%;font-size:14px;padding:10px;" onclick="selectPlayer('test')">🧪 Test Mode (solo)</button>
       </div>
     </div>
 
@@ -730,6 +749,7 @@ function selectPlayer(p) {
   document.getElementById('btn-chris').classList.toggle('selected', p==='chris');
   document.getElementById('btn-tony').classList.toggle('selected', p==='tony');
 
+
   const statusEl = document.getElementById('lobby-status-msg');
   statusEl.style.display = 'block';
 
@@ -758,6 +778,12 @@ async function createRoom(autoJoinTony=false) {
 }
 
 async function joinRoom() {
+  // Apply Tony's layout immediately when joining
+  document.body.classList.add('tony-pov');
+  document.getElementById('tony-won-tricks').style.top = 'auto';
+  document.getElementById('tony-won-tricks').style.bottom = '12px';
+  document.getElementById('chris-won-tricks').style.bottom = 'auto';
+  document.getElementById('chris-won-tricks').style.top = '12px';
   roomCode = FIXED_ROOM;
 
   let { data, error } = await sb.from('game_state').select('*').eq('room_code', roomCode).single();
@@ -809,7 +835,8 @@ function handleStateUpdate(newGs) {
       if (!gameStarted) {
         gameStarted = true;
         if (gs.phase === 'waiting_for_cut') {
-          showCutModal();
+          if (testMode || myPlayer === 'chris') showCutModal();
+          else showModal(`<h2 style="font-size:18px;color:var(--gold)">Waiting for Chris<br>to cut for deal…</h2>`);
         } else {
           processPhase();
         }
@@ -941,6 +968,7 @@ function processPhase() {
 function showCutModal() {
   let html = `
     <h2>Cut for Deal</h2>
+    <p>Each player cuts the deck. Highest card becomes dealer.</p>
     <div id="cut-display">
       <div class="cut-player">
         <div id="tony-cut-area" style="width:80px;height:112px;"></div>
@@ -986,9 +1014,13 @@ async function performCut() {
     if (btn) { btn.textContent = 'Dealing…'; btn.disabled = true; }
     setTimeout(async () => { hideOverlay(); await dealHand(dealer, gs.hand_idx); }, 4000);
   } else {
-    if (btn) {
-      btn.textContent = 'Deal Hand';
-      btn.onclick = async () => { hideOverlay(); await dealHand(dealer, gs.hand_idx); };
+    // Chris always drives dealing regardless of who won cut
+    if (myPlayer === 'chris') {
+      if (btn) { btn.textContent = 'Dealing…'; btn.disabled = true; }
+      setTimeout(async () => { hideOverlay(); await dealHand(dealer, gs.hand_idx); }, 2000);
+    } else {
+      // Tony just waits
+      if (btn) { btn.textContent = `${dealer==='tony'?'Tony':'Chris'} deals…`; btn.disabled = true; }
     }
   }
 }
@@ -1331,10 +1363,10 @@ function startConfetti() {
 }
 
 async function triggerNextHand() {
-  playInFlight = false;
   hideOverlay();
   let nextIdx = gs.hand_idx + 1;
   let nextDealer = opponent(gs.dealer);
+  // Deal directly — cut for dealer only happens once at the start of the match
   await dealHand(nextDealer, nextIdx);
 }
 
@@ -1435,11 +1467,7 @@ function applyFan(handId) {
     c.style.zIndex = i;
   });
 
-  if (handId === 'tony-hand') {
-    el.style.transform = 'rotate(180deg)';
-  } else {
-    el.style.transform = 'none';
-  }
+  el.style.transform = 'none';
 }
 
 function renderAll() {
@@ -1451,6 +1479,14 @@ function renderAll() {
   renderStockPile();
   renderTrickCounts();
   renderWonTricks();
+  // Apply Tony's layout on every render
+  if (myPlayer === 'tony') {
+    document.body.classList.add('tony-pov');
+    document.getElementById('tony-won-tricks').style.top = 'auto';
+    document.getElementById('tony-won-tricks').style.bottom = '12px';
+    document.getElementById('chris-won-tricks').style.bottom = 'auto';
+    document.getElementById('chris-won-tricks').style.top = '12px';
+  }
   renderCurrentTrick();
   renderScorecard();
   renderDealerMarker();
@@ -1489,7 +1525,18 @@ function renderHands() {
               showSuitMsg('You must follow suit — play a ' + suitName);
               return;
             }
-            playCardAs(p, card);
+            // Tap once to select, tap again to play
+            const handEl = el;
+            const alreadySelected = c.classList.contains('selected');
+            // Deselect all cards in this hand
+            handEl.querySelectorAll('.card.selected').forEach(x => x.classList.remove('selected'));
+            if (alreadySelected) {
+              // Second tap — play the card
+              playCardAs(p, card);
+            } else {
+              // First tap — select it
+              c.classList.add('selected');
+            }
           };
         }
         el.appendChild(c);
